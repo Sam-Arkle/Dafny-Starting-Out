@@ -179,6 +179,29 @@ method sub(s1: string, s2: string) returns (res: string)
     res := normalizeBitString(rev);
 }
 
+
+// Helper function to reverse a string
+function Reverse(s: string): string
+    decreases s
+    requires ValidBitString(s)
+    ensures ValidBitString(Reverse(s))
+{
+    if |s| == 0 then s else Reverse(s[1..]) + [s[0]]
+}
+
+// Helper lemma to prove substrings of valid bitstrings are valid:
+lemma SubstringValid(s: string, i: int)
+    requires ValidBitString(s)
+    requires 0 <= i < |s|
+    ensures ValidBitString(s[i..])
+{}
+
+function Power2(n: nat): nat
+    decreases n
+{
+    if n == 0 then 1 else 2 * Power2(n - 1)
+}
+
 // ----------------------------------------------------
 // 3) add: string-based addition (no str2int / int2str)
 // ----------------------------------------------------
@@ -191,8 +214,8 @@ method add(s1: string, s2: string) returns (res: string)
     // Step 1: Normalize inputs (drop leading zeros if needed).
     var x := normalizeBitString(s1);
     var y := normalizeBitString(s2);
-    // assert str2int(y) == str2int(s2);
-    // assert str2int(x) == str2int(s1);
+    assert str2int(y) == str2int(s2);
+    assert str2int(x) == str2int(s1);
 
 
     // If either is "0", the sum is the other.
@@ -200,7 +223,7 @@ method add(s1: string, s2: string) returns (res: string)
         res := y;
         return;
     }
-    if y == "0" {
+    else if y == "0" {
         assert str2int(y) == 0;
         assert str2int(x) + str2int(y) == str2int(x);
         res := x; 
@@ -208,19 +231,32 @@ method add(s1: string, s2: string) returns (res: string)
         assert str2int(x) == str2int(s1);
         return;
     }
-
+    else{
     // We build the result from the least significant bit forward.
+    assert |x| > 0;
     var i := |x| - 1;  // index on x
     var j := |y| - 1;  // index on y
     var carry := 0;
     var sb := []; // dynamic array of chars for result (in reverse order)
+    ghost var power := 1;  // Track 2^|sb|
+    assert ValidBitString(sb);
+    assert str2int(sb) == 0;
+    assert str2int(Reverse(sb)) == 0;
+    assert 0 <= i < |x|;
+    SubstringValid(x, i);
+    assert str2int(x[0..i+1]) == str2int(x);
 
     while i >= 0 || j >= 0 || carry != 0
-        decreases i + j, carry
+    // Explaining decreases: Cases: i (and or j) decreases. Neither decreaes but carry does. 
+        decreases (if i >= 0 then i + 1 else 0) + (if j >= 0 then j + 1 else 0) + carry 
         invariant 0 <= carry <= 1
         invariant i <= |x| - 1 && j <= |y| - 1
-    {
-        var bitX := 0;
+        invariant forall m :: 0 <= m < |sb| ==> sb[m] == '0' || sb[m] == '1'
+        invariant power == Power2(|sb|)
+        invariant ValidBitString(sb)  
+        // invariant str2int(Reverse(sb)) + (str2int(x[0..i+1]) + str2int(y[0..j+1]) + carry * power) == str2int(x) + str2int(y)    {
+        invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
+        {var bitX := 0;
         if i >= 0 {
             bitX := if x[i] == '1' then 1 else 0;}
         var bitY := 0;
@@ -238,19 +274,31 @@ method add(s1: string, s2: string) returns (res: string)
 
         if i >= 0 { i := i - 1; }
         if j >= 0 { j := j - 1; }
+        power := power * 2;  // Update power
+        assert power == Power2(|sb|);
     }
 
+    assert str2int(Reverse(sb)) == str2int(x) + str2int(y);
+    
     // Reverse sb to get the proper bit string
     var rev := "";
     var k := |sb| - 1;
     while k >= 0
         decreases k
+        invariant forall m :: 0 <= m < |rev| ==> rev[m] == '0' || rev[m] == '1'
+        invariant str2int(rev) == str2int(sb[0..k+1])
     {
         rev := rev + [sb[k]];
         k := k - 1;
     }
+    assert ValidBitString(rev);
 
     res := normalizeBitString(rev);
+
+    assert str2int(res) == str2int(rev);
+
+    assert str2int(res) == str2int(x) + str2int(y); // Help Dafny with the key fact
+    }
 }
 
 
@@ -263,7 +311,7 @@ function str2int(s: string) : nat
     ensures str2int(s) == str2int(s)
     decreases s
 {
-    if |s| == 0 then 0 else 2 * str2int(s[0..|s|-1]) + (if s[|s|-1] == '1' then 1 else 0)
+    if |s| == 0 then 0 else 2 * str2int(s[0..|s|  - 1]) + (if s[ |s| - 1] == '1' then 1 else 0)
 }
 
 lemma ValidBitString_Concat_Char(s: string, c: string)
@@ -469,32 +517,48 @@ lemma AllZerosRemoveLeadingZerosIsZero(s: string)
         AllZerosRemoveLeadingZerosIsZero(s[1..]);
     }
 }
-lemma singleZeroPrefixStringEqualsString(s: string)
+
+lemma addingZeroPrefixToBitStringNoChangeToInt(s: string)
+    requires ValidBitString(s) 
+    ensures str2int("0" + s) == str2int(s)
+    decreases |s|
+    {
+        assert str2int("011") == str2int("11");
+
+        if |s| == 0 {
+            // Base case : empty string
+            assert str2int("0") == 0;
+            assert str2int("") == 0;
+        } else{
+            var s' := s[0..|s|-1];
+            var c := s[|s|-1];
+            assert ValidBitString(s');
+            addingZeroPrefixToBitStringNoChangeToInt(s');
+            assert str2int(s) == 2 * str2int(s') + (if c == '1' then 1 else 0);
+            var t := s[0..|s|-1];
+            assert str2int("0" + s) == 2 * str2int("0" + t) + (if s[|s|-1] == '1' then 1 else 0);
+            assert str2int("0" + s) == 2 * str2int("0" + s') + (if c == '1' then 1 else 0);
+            assert str2int("0" + s') == str2int(s');
+            assert 2 * str2int("0" + s') + (if c == '1' then 1 else 0) == 2 * str2int(s') + (if c == '1' then 1 else 0);
+            assert str2int("0" + s) == str2int(s);
+    
+
+        }
+
+    }
+
+lemma singleZeroPrefixBitStringEqualsBitString(s: string)
     requires ValidBitString(s)
     requires |s| > 1 && s[0] == '0' && s[1] == '1'
     ensures str2int(s) == str2int(s[1..])
     {
-        // By definition:
-        // str2int(s) = 2 * str2int(s[0..|s|-1]) + (if s[|s|-1] == '1' then 1 else 0)
-        // But s[0] == '0', so s = '0' + t, t = s[1..]
-        // So str2int(s) = 2 * str2int(t)
-        // Now, t[0] == '1', so t has no leading zeros
-        // Let's expand str2int(s) and str2int(t) for a concrete example, e.g. s = "011"
-        // str2int("011") = 2 * str2int("11")
-        // str2int("11") = 2 * str2int("1") + 1 = 2 * 1 + 1 = 3
-        // str2int("011") = 2 * 3 = 6, but that's not correct for binary, so let's check the definition
-        // Actually, str2int(s) = 2 * str2int(s[0..|s|-1]) + (if s[|s|-1] == '1' then 1 else 0)
-        // For s = "011":
-        // str2int("011") = 2 * str2int("01") + 1
-        // str2int("01") = 2 * str2int("0") + 1 = 2 * 0 + 1 = 1
-        // So str2int("011") = 2 * 1 + 1 = 3
-        // str2int("11") = 2 * str2int("1") + 1 = 2 * 1 + 1 = 3
-        // So str2int("011") == str2int("11")
-        // General case:
-        // str2int(s) = 2 * str2int(s[0..|s|-1]) + (if s[|s|-1] == '1' then 1 else 0)
-        // s[0] == '0', so s = '0' + t, t = s[1..]
-        // str2int(s) = 2 * str2int(t[0..|t|-1]) + (if t[|t|-1] == '1' then 1 else 0)
-        // But that's just str2int(t)
+        assert str2int("011") == str2int("11");
+        var t := s[1..];
+        assert str2int(removeLeadingZeros(t)) == str2int(t);
+        assert str2int(removeLeadingZeros(s)) == str2int(s[1..]);
+
+        assert str2int(removeLeadingZeros(s)) == str2int(s);
+        assert str2int(t) == str2int(s);
         assert str2int(s) == str2int(s[1..]);
     }
 
