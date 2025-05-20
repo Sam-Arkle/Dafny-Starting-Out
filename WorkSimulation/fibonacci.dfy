@@ -92,3 +92,43 @@ method FastFibonacci(n: nat) returns (r: nat)
     var f, f1 := FastFibPair(n);
     return f;
 }
+
+
+method altFastFib(n: nat) returns (r: nat)
+    ensures r == fib(n)
+{
+    if n == 0 {
+        r := 0;
+        return;
+    }else if  n == 1 {
+        r := 1;
+        return;
+    }else{
+        var two_prev := 0;
+        var one_prev := 1;
+        var i := 2;
+        while i <= n
+            invariant 2 <= i <= n + 1
+            invariant two_prev == fib(i - 2)
+            invariant one_prev == fib(i - 1)
+            {   
+                var next := two_prev + one_prev;
+                two_prev := one_prev;
+                one_prev := next;
+                i := i + 1;
+            } 
+            r := one_prev;
+    }
+}
+
+method testFib()
+{
+    var zero := altFastFib(0); // 0
+    var one := altFastFib(1); // 1
+    var two := altFastFib(2); // 1
+    var five := altFastFib(5); // 5
+
+    assert one == 1;
+    // assert fib(2) == 2;
+    
+}
