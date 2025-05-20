@@ -196,6 +196,26 @@ lemma SubstringValid(s: string, i: int)
     ensures ValidBitString(s[i..])
 {}
 
+// Lemma to prove whole substring of string is equal to string.
+lemma substringEqual(s: string)
+    requires ValidBitString(s)
+    ensures forall i :: 0 <= i <= |s| ==> s[0..i] + s[i..|s|] == s
+    {
+            assert s == s[0..|s|]; 
+    }
+
+lemma bitStringSumEqualsWholeSubstringSum(s : string)
+    requires ValidBitString(s)
+    ensures forall i :: 0 <= i <= |s| ==> str2int(s[0..i] + s[i..|s|]) == str2int(s)
+    {
+        substringEqual(s); 
+
+        assert forall i :: 0 <= i <= |s| ==> 
+            s[0..i] + s[i..|s|] == s &&
+            str2int(s[0..i] + s[i..|s|]) == str2int(s);
+
+    }
+
 function Power2(n: nat): nat
     decreases n
 {
@@ -229,12 +249,14 @@ method add(s1: string, s2: string) returns (res: string)
         res := x; 
         assert str2int(x) == str2int(res);
         assert str2int(x) == str2int(s1);
-        return;
+        return; 
     }
     else{
     // We build the result from the least significant bit forward.
     assert |x| > 0;
+    assert |y| > 0;
     var i := |x| - 1;  // index on x
+    var xSub := x[0..i+1];
     var j := |y| - 1;  // index on y
     var carry := 0;
     var sb := []; // dynamic array of chars for result (in reverse order)
@@ -244,7 +266,15 @@ method add(s1: string, s2: string) returns (res: string)
     assert str2int(Reverse(sb)) == 0;
     assert 0 <= i < |x|;
     SubstringValid(x, i);
-    assert str2int(x[0..i+1]) == str2int(x);
+    assert str2int(x[0..]) == str2int(x);
+    assert i + 1 == |x|;
+    assert ValidBitString(x[0..i+1]);
+    assert ValidBitString(xSub);
+    bitStringSumEqualsWholeSubstringSum(x);
+    // assert i == |x| - 1 ==> str2int(x[0..i+1]) == str2int(x);
+    assert xSub == x;
+    assert str2int(xSub) == str2int(x);
+    assert str2int(x)  == str2int(x[0..i+1]) ;
 
     while i >= 0 || j >= 0 || carry != 0
     // Explaining decreases: Cases: i (and or j) decreases. Neither decreaes but carry does. 
@@ -255,7 +285,8 @@ method add(s1: string, s2: string) returns (res: string)
         invariant power == Power2(|sb|)
         invariant ValidBitString(sb)  
         // invariant str2int(Reverse(sb)) + (str2int(x[0..i+1]) + str2int(y[0..j+1]) + carry * power) == str2int(x) + str2int(y)    {
-        invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
+        // invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
+        // invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
         {var bitX := 0;
         if i >= 0 {
             bitX := if x[i] == '1' then 1 else 0;}
@@ -309,6 +340,7 @@ method add(s1: string, s2: string) returns (res: string)
 function str2int(s: string) : nat
     requires ValidBitString(s)
     ensures str2int(s) == str2int(s)
+    ensures ValidBitString(int2str(str2int(s)))
     decreases s
 {
     if |s| == 0 then 0 else 2 * str2int(s[0..|s|  - 1]) + (if s[ |s| - 1] == '1' then 1 else 0)
@@ -471,176 +503,68 @@ method normalizeBitString(s: string) returns(res: string)
     }
 }
 
-function removeLeadingZeros (s: string) :string
-    requires ValidBitString(s)
-    ensures ValidBitString(removeLeadingZeros(s))
-    {
-        if |s| == 0 then // Empty string case 
-            "0"
-        else if |s| == 1 && s[0] == '0' then // Singleton string '0'
-            "0"
-        else if s[0] == '1' then // No leading zeros
-            s
-        else 
-            removeLeadingZeros(s[1..])
-
-    }
 
 
-// If a str2int outputs 0 then string must be only zeros. 
-lemma str2IntZeroImpliesAllZeros(s: string)
-    requires ValidBitString(s)
-    requires str2int(s) == 0
-    ensures forall i :: 0 <= i < |s| ==> s[i] == '0'
+lemma Str2IntDef(s: string)
+requires ValidBitString(s) && |s| >= 1
+ensures  str2int(s)
+        == 2 * str2int(s[0..|s| - 1])
+        + (if s[|s| - 1] == '1' then 1 else 0)
 {
-    if |s| == 0 {
-        // nothing to prove
+// by unfolding str2int’s definition
+}  
+
+lemma LemmaZeroPrefix(t: string)
+    requires ValidBitString(t)
+    ensures str2int("0" + t) == str2int(t)
+{
+    if |t| == 0 {
+        // Base case: "0" has the same value as an empty string (both 0)
     } else {
-        if s[|s|-1] == '1' {
-            // Then str2int(s) >= 1, contradiction
-            assert false;
-        }
-        // So s[|s|-1] == '0'
-        str2IntZeroImpliesAllZeros(s[0..|s|-1]);
+        LemmaZeroPrefix(t[0..|t| -1]); // Inductive step
+        // Calculate using the definition of str2int
+       calc {
+        // 1) unfold str2int on "0"+t
+        str2int("0" + t);
+          == { Str2IntDef("0" + t) ;}
+        2 * str2int(("0" + t)[0..|t|])
+          + (if t[|t|-1] == '1' then 1 else 0);
+
+        // 2) slice‐rewrite: drop the last char of "0"+t
+          == { assert ("0" + t)[0..|t|] == "0" + t[0..|t|-1]; }
+        2 * str2int("0" + t[0..|t|-1])
+          + (if t[|t|-1] == '1' then 1 else 0);
+
+        // 3) by the inductive hypothesis on t[0..|t|-1]
+          == { LemmaZeroPrefix(t[0..|t|-1]); }
+        2 * str2int(t[0..|t|-1])
+          + (if t[|t|-1] == '1' then 1 else 0);
+
+        // 4) fold str2int on t
+          == { Str2IntDef(t) ;}
+        str2int(t);
+      }
     }
 }
 
-lemma AllZerosRemoveLeadingZerosIsZero(s: string)
-    requires ValidBitString(s)
-    requires forall i :: 0 <= i < |s| ==> s[i] == '0'
-    ensures removeLeadingZeros(s) == "0"
-{
-    if |s| == 0 {
-    } else if |s| == 1 {
-        assert s[0] == '0';
-    } else {
-        AllZerosRemoveLeadingZerosIsZero(s[1..]);
-    }
-}
-
-lemma addingZeroPrefixToBitStringNoChangeToInt(s: string)
+lemma LemmaDropLeadingZero(s: string)
     requires ValidBitString(s) 
-    ensures str2int("0" + s) == str2int(s)
-    decreases |s|
-    {
-        assert str2int("011") == str2int("11");
-
-        if |s| == 0 {
-            // Base case : empty string
-            assert str2int("0") == 0;
-            assert str2int("") == 0;
-        } else{
-            var s' := s[0..|s|-1];
-            var c := s[|s|-1];
-            assert ValidBitString(s');
-            addingZeroPrefixToBitStringNoChangeToInt(s');
-            assert str2int(s) == 2 * str2int(s') + (if c == '1' then 1 else 0);
-            var t := s[0..|s|-1];
-            assert str2int("0" + s) == 2 * str2int("0" + t) + (if s[|s|-1] == '1' then 1 else 0);
-            assert str2int("0" + s) == 2 * str2int("0" + s') + (if c == '1' then 1 else 0);
-            assert str2int("0" + s') == str2int(s');
-            assert 2 * str2int("0" + s') + (if c == '1' then 1 else 0) == 2 * str2int(s') + (if c == '1' then 1 else 0);
-            assert str2int("0" + s) == str2int(s);
-    
-
-        }
-
-    }
-
-lemma singleZeroPrefixBitStringEqualsBitString(s: string)
-    requires ValidBitString(s)
-    requires |s| > 1 && s[0] == '0' && s[1] == '1'
-    ensures str2int(s) == str2int(s[1..])
-    {
-        assert str2int("011") == str2int("11");
-        var t := s[1..];
-        assert str2int(removeLeadingZeros(t)) == str2int(t);
-        assert str2int(removeLeadingZeros(s)) == str2int(s[1..]);
-
-        assert str2int(removeLeadingZeros(s)) == str2int(s);
-        assert str2int(t) == str2int(s);
-        assert str2int(s) == str2int(s[1..]);
-    }
-
-lemma str2intInvariantLeadingZeros (s: string)
-    // requires LeadingZero(s)
-    requires ValidBitString(s)
-    ensures str2int(s) == str2int(removeLeadingZeros(s))
-    decreases |s|
-    {
-        if |s| == 0 {
-            // Case : empty string
-            assert removeLeadingZeros(s) == "0";
-            assert str2int(s) == 0;
-            assert str2int(removeLeadingZeros(s)) == 0;  
-        }
-        else if |s| == 1 && s[0] == '0' {
-            // Case : single '0'
-            assert removeLeadingZeros(s) == "0";
-            assert str2int(s) == 0;
-            assert str2int(removeLeadingZeros(s)) == 0;
-            assert str2int(removeLeadingZeros(s)) == str2int(s);
-        } 
-        else if |s| == 1 && s[0] == '1'{
-            // Case : single '1' 
-            assert removeLeadingZeros(s) == "1";
-            assert str2int(s) == 1;
-            assert str2int(removeLeadingZeros(s)) == 1;
-            assert str2int(removeLeadingZeros(s)) == str2int(s);
-        }
-        else if s[0] == '0' && str2int(s) == 0 {
-            // Case : All zeros
-            assert s[0] == '0';
-            assert str2int(s) == 0;
-            assert ValidBitString(s);
-            str2IntZeroImpliesAllZeros(s);
-            assert forall i :: 0 <= i < |s| ==> s[i] == '0';
-            AllZerosRemoveLeadingZerosIsZero(s);
-            assert removeLeadingZeros(s) == "0";
-            assert str2int(removeLeadingZeros(s)) == 0;
-            assert str2int(s) == 0;
-            assert str2int(removeLeadingZeros(s)) == str2int(s);
-        } 
-        else if s[0] == '0' && str2int(s) != 0{
-            // Case : Leading zeros
-            assert s[0] == '0';
-            var t := s[1..];
-            assert ValidBitString(t); 
-            assert str2int(removeLeadingZeros(s)) == str2int(removeLeadingZeros(t));
-            assert str2int(removeLeadingZeros(t)) == str2int(t);
-            assert removeLeadingZeros(s) == removeLeadingZeros(t); 
-            str2intInvariantLeadingZeros(t);
-            if t[0] == '1'{
-                // Case, second char is 1
-
-                assert str2int(removeLeadingZeros(s)) == str2int(s); 
-
-            }else {
-                // Case : Second char is 0
-                assert str2int(removeLeadingZeros(s)) == str2int(s);
-            }
-
-
-        }
-        else{
-        // Case : no leading zeros
-        assert s[0] == '1';
-        
-        assert ValidBitString(s);
-        // Inductive hypothesis
-        // str2intInvariantLeadingZeros(s);
-
-
-        } 
-    }
-
+    requires |s| > 0 ==> s[0] == '0'
+    ensures |s| > 0 ==> str2int(s) == str2int(s[1..])
+{
+    // Decompose s = "0" + t where t = s[1..]
+    // Apply LemmaZeroPrefix to t, which proves str2int("0" + t) == str2int(t)
+    if |s| > 0{
+    assert "0" + s[1..] == s;
+    LemmaZeroPrefix(s[1..]);}
+}
 
 method normalizeBitString2(s: string) returns(res: string)
     // Remove leading zeros, except keep at least one digit
     requires ValidBitString(s)
     ensures ValidBitString(res)
     ensures str2int(res) == str2int(s)
-    ensures res == removeLeadingZeros(s)
+    // ensures res == removeLeadingZeros(s)
     decreases s
 {
     // If all zero or empty, return "0"
@@ -649,28 +573,24 @@ method normalizeBitString2(s: string) returns(res: string)
     else{
         // find first '1'
         var firstOne := 0;
-        while firstOne < |s|
+        assert str2int(s[firstOne..]) == str2int(s);
+        assert |s| > 0;
+        while firstOne < |s| 
             invariant 0 <= firstOne <= |s|
-            invariant forall j :: 0 <= j < firstOne ==> s[j] != '1'
+            invariant forall j :: 0 <= j < firstOne ==> s[j] == '0'
             decreases |s| - firstOne
-            {
-                if (s[firstOne] == '1') {res := s[firstOne..|s|];
+            invariant str2int(s[firstOne..]) == str2int(s)
+            {   
+                
+                if (s[firstOne] == '1') {
+                    res := s[firstOne.. ];
                     return res;}
-                firstOne := firstOne + 1;
-            }
-        res:= "0";
-        // var firstOne :| 0 <= firstOne <= |s|;
-        // // pick the earliest i in 0..|s| if s[i] == '1'
-        // if (forall i | 0 <= i < |s| :: s[i] == '0') {
-        //     res := "0";}
-        // else {
-        //     // firstOne is the leftmost '1'
-        //     res := s[firstOne..|s|] ;}
+                
+                    LemmaDropLeadingZero(s[firstOne..]);
+                    assert str2int(s[firstOne..]) == str2int(s);
+                    firstOne := firstOne + 1;
+                     
+                    }
+        res:= "0"; // No '1' in string, return '0'.
     }
 }
-
-
-
-
-
-
