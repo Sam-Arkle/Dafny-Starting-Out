@@ -45,7 +45,7 @@ lemma FastDoublingFibonacciLemma(a: nat)
 
 // Returns tuple (F(n), F(n+1))
 method FastFibPair(n: nat) returns (f: nat, f1: nat)
-// Algorithm credit: https://www.nayuki.io/page/fast-fib-algorithms
+// Algorithm credit: https://www.nayuki.io/page/fast-fibonacci-algorithms
     ensures f == fib(n)
     ensures f1 == fib(n+1)
     decreases n
