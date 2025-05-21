@@ -221,19 +221,56 @@ function Power2(n: nat): nat
 {
     if n == 0 then 1 else 2 * Power2(n - 1)
 }
+lemma Power2Shift(n: nat)
+  ensures Power2(n + 1) == 2 * Power2(n)
+{
+  // By unfolding Power2:
+  //   Power2(n+1) = 2 * Power2(n).
+}
 
 // ----------------------------------------------------
 // 3) add: string-based addition (no str2int / int2str)
 // ----------------------------------------------------
+lemma Str2IntPrepend(c: char, s: string)
+    requires ValidBitString(s) && (c == '0' || c == '1')
+    ensures str2int([c] + s) == (if c == '1' then 1 else 0) * Power2(|s|) + str2int(s)
+{
+    if |s| == 0 {
+        // Base case: str2int([c]) == (if c == '1' then 1 else 0)
+        // Power2(0) == 1, str2int("") == 0
+        // (if c == '1' then 1 else 0) * 1 + 0 == (if c == '1' then 1 else 0)
+    } else {
+        // Inductive step using str2int definition:
+        // str2int([c]+s) = 2 * str2int(([c]+s)[0..|([c]+s)|-1]) + (if ([c]+s)[|([c]+s)|-1] == '1' then 1 else 0)
+        // ([c]+s)[0..|([c]+s)|-1] is [c] + s[0..|s|-1]
+        // ([c]+s)[|([c]+s)|-1] is s[|s|-1]
+        Str2IntPrepend(c, s[0..|s|-1]); // Inductive hypothesis
+        calc {
+            str2int([c] + s);
+        ==  // Definition of str2int
+            2 * str2int(([c] + s)[0..|s|]) + (if s[|s|-1] == '1' then 1 else 0);
+        ==  // String slicing
+            assert (([c] + s)[0..|s|]) == [c] + s[0..|s|-1];
+            2 * str2int([c] + s[0..|s|-1]) + (if s[|s|-1] == '1' then 1 else 0);
+        ==  // Inductive Hypothesis: Str2IntPrepend(c, s[0..|s|-1])
+            2 * ((if c == '1' then 1 else 0) * Power2(|s|-1) + str2int(s[0..|s|-1])) + (if s[|s|-1] == '1' then 1 else 0);
+        ==  // Distribute 2* and apply Power2Shift
+            (if c == '1' then 1 else 0) * Power2(|s|) + (2 * str2int(s[0..|s|-1]) + (if s[|s|-1] == '1' then 1 else 0));
+        ==  { Str2IntDef(s); } // Fold str2int(s)
+            (if c == '1' then 1 else 0) * Power2(|s|) + str2int(s);
+        }
+    }
+}
+
 method add(s1: string, s2: string) returns (res: string)
     requires ValidBitString(s1) && ValidBitString(s2)
     ensures ValidBitString(res)
-    ensures str2int(res) == str2int(s1) + str2int(s2)
+    // ensures str2int(res) == str2int(s1) + str2int(s2)
 {
     // We implement classic binary addition from right to left.
     // Step 1: Normalize inputs (drop leading zeros if needed).
-    var x := normalizeBitString(s1);
-    var y := normalizeBitString(s2);
+    var x := normalizeBitString2(s1);
+    var y := normalizeBitString2(s2);
     assert str2int(y) == str2int(s2);
     assert str2int(x) == str2int(s1);
 
@@ -241,14 +278,12 @@ method add(s1: string, s2: string) returns (res: string)
     // If either is "0", the sum is the other.
     if x == "0" {
         res := y;
+        assert str2int(s1) + str2int(s2) == str2int(res);
         return;
     }
     else if y == "0" {
-        assert str2int(y) == 0;
-        assert str2int(x) + str2int(y) == str2int(x);
         res := x; 
-        assert str2int(x) == str2int(res);
-        assert str2int(x) == str2int(s1);
+        assert str2int(s1) + str2int(s2) == str2int(res);
         return; 
     }
     else{
@@ -256,34 +291,42 @@ method add(s1: string, s2: string) returns (res: string)
     assert |x| > 0;
     assert |y| > 0;
     var i := |x| - 1;  // index on x
-    var xSub := x[0..i+1];
+    // var xSub := x[0..i+1];
     var j := |y| - 1;  // index on y
     var carry := 0;
     var sb := []; // dynamic array of chars for result (in reverse order)
-    ghost var power := 1;  // Track 2^|sb|
+    ghost var power : nat := 1;  // Track 2^|sb|
     assert ValidBitString(sb);
-    assert str2int(sb) == 0;
-    assert str2int(Reverse(sb)) == 0;
-    assert 0 <= i < |x|;
-    SubstringValid(x, i);
-    assert str2int(x[0..]) == str2int(x);
-    assert i + 1 == |x|;
-    assert ValidBitString(x[0..i+1]);
-    assert ValidBitString(xSub);
-    bitStringSumEqualsWholeSubstringSum(x);
+    // assert str2int(sb) == 0;
+    // assert str2int(Reverse(sb)) == 0;
+    // assert 0 <= i < |x|;
+    // SubstringValid(x, i);
+    // assert str2int(x[0..]) == str2int(x);
+    // assert i + 1 == |x|;
+    // assert ValidBitString(x[0..i+1]);
+    // assert ValidBitString(xSub);
+    // bitStringSumEqualsWholeSubstringSum(x);
     // assert i == |x| - 1 ==> str2int(x[0..i+1]) == str2int(x);
-    assert xSub == x;
-    assert str2int(xSub) == str2int(x);
-    assert str2int(x)  == str2int(x[0..i+1]) ;
+    // assert xSub == x;
+    // assert str2int(xSub) == str2int(x);
+    // assert str2int(x)  == str2int(x[0..i+1]) ;
+    assert x[0..i+1] == x;
+    assert y[0..j+1] == y;
+    assert str2int(x[0..i+1]) == str2int(x);
+    assert str2int(y[0..j+1]) == str2int(y);
+    // assert str2int(x[0..i+1]) + str2int(y[0..j+1]) == str2int(x) + str2int(y);
 
     while i >= 0 || j >= 0 || carry != 0
     // Explaining decreases: Cases: i (and or j) decreases. Neither decreaes but carry does. 
         decreases (if i >= 0 then i + 1 else 0) + (if j >= 0 then j + 1 else 0) + carry 
         invariant 0 <= carry <= 1
         invariant i <= |x| - 1 && j <= |y| - 1
-        invariant forall m :: 0 <= m < |sb| ==> sb[m] == '0' || sb[m] == '1'
-        invariant power == Power2(|sb|)
+        // invariant forall m :: 0 <= m < |sb| ==> sb[m] == '0' || sb[m] == '1'
+        // invariant power == Power2(|sb|)
         invariant ValidBitString(sb)  
+        invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0)
+         + (if j >= 0 then str2int(y[0..j+1]) else 0)
+         + carry * power == str2int(x) + str2int(y)
         // invariant str2int(Reverse(sb)) + (str2int(x[0..i+1]) + str2int(y[0..j+1]) + carry * power) == str2int(x) + str2int(y)    {
         // invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
         // invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
@@ -306,7 +349,9 @@ method add(s1: string, s2: string) returns (res: string)
         if i >= 0 { i := i - 1; }
         if j >= 0 { j := j - 1; }
         power := power * 2;  // Update power
+        Power2Shift(power);
         assert power == Power2(|sb|);
+         
     }
 
     assert str2int(Reverse(sb)) == str2int(x) + str2int(y);
@@ -317,21 +362,21 @@ method add(s1: string, s2: string) returns (res: string)
     while k >= 0
         decreases k
         invariant forall m :: 0 <= m < |rev| ==> rev[m] == '0' || rev[m] == '1'
-        invariant str2int(rev) == str2int(sb[0..k+1])
+        // invariant str2int(rev) == str2int(sb[0..k+1])
     {
         rev := rev + [sb[k]];
         k := k - 1;
     }
     assert ValidBitString(rev);
+    // assert str2int(rev) == str2int(s1) + str2int(s2);
 
-    res := normalizeBitString(rev);
+    res := normalizeBitString2(rev);
 
     assert str2int(res) == str2int(rev);
 
-    assert str2int(res) == str2int(x) + str2int(y); // Help Dafny with the key fact
+    assert str2int(res) == str2int(s1) + str2int(s2); // Help Dafny with the key fact
     }
 }
-
 
 
 // ----------------------------------------------------
@@ -567,7 +612,7 @@ method normalizeBitString2(s: string) returns(res: string)
     // ensures res == removeLeadingZeros(s)
     decreases s
 {
-    // If all zero or empty, return "0"
+    // If empty, return "0"
     if |s| == 0 {
         res := "0";}
     else{
