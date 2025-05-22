@@ -261,6 +261,29 @@ lemma Str2IntPrepend(c: char, s: string)
         }
     }
 }
+lemma Str2IntAppend(s: string, c: char)
+    requires ValidBitString(s)
+    requires c == '0' || c == '1'
+    ensures str2int(s + [c]) == 2 * str2int(s) + (if c == '1' then 1 else 0)
+{
+    // By definition of str2int:
+    if |s| == 0 {
+        // str2int("" + [c]) == str2int([c])
+        // str2int([c]) == (if c == '1' then 1 else 0)
+        // 2 * 0 + (if c == '1' then 1 else 0) == (if c == '1' then 1 else 0)
+    } else {
+        // Inductive step:
+        Str2IntAppend(s[0..|s|-1], c);
+        calc {
+            str2int(s + [c]);
+        == { Str2IntDef(s + [c]); }
+            2 * str2int((s + [c])[0..|s|]) + (if (s + [c])[|s|] == '1' then 1 else 0);
+        == { assert (s + [c])[0..|s|] == s; }
+            2 * str2int(s) + (if c == '1' then 1 else 0);
+        }
+    }
+}
+
 
 method add(s1: string, s2: string) returns (res: string)
     requires ValidBitString(s1) && ValidBitString(s2)
@@ -296,24 +319,25 @@ method add(s1: string, s2: string) returns (res: string)
     var carry := 0;
     var sb := []; // dynamic array of chars for result (in reverse order)
     ghost var power : nat := 1;  // Track 2^|sb|
+    ghost var RHS := str2int(x) + str2int(y);
+    ghost var LHS :=  str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0)
+         + (if j >= 0 then str2int(y[0..j+1]) else 0)
+         + carry * power;
+    ghost var new_LHS := LHS;
+    ghost var old_LHS := LHS;
+    ghost var old_xi_val := str2int(x[0..i+1]);
+    ghost var new_xi_val := str2int(x[0..i+1]);
+    ghost var old_yj_val := str2int(y[0..j+1]);
+    ghost var new_yj_val := str2int(y[0..j+1]);
+    ghost var old_sb := sb;
+
+    
     assert ValidBitString(sb);
-    // assert str2int(sb) == 0;
-    // assert str2int(Reverse(sb)) == 0;
-    // assert 0 <= i < |x|;
-    // SubstringValid(x, i);
-    // assert str2int(x[0..]) == str2int(x);
-    // assert i + 1 == |x|;
-    // assert ValidBitString(x[0..i+1]);
-    // assert ValidBitString(xSub);
-    // bitStringSumEqualsWholeSubstringSum(x);
-    // assert i == |x| - 1 ==> str2int(x[0..i+1]) == str2int(x);
-    // assert xSub == x;
-    // assert str2int(xSub) == str2int(x);
-    // assert str2int(x)  == str2int(x[0..i+1]) ;
     assert x[0..i+1] == x;
     assert y[0..j+1] == y;
     assert str2int(x[0..i+1]) == str2int(x);
     assert str2int(y[0..j+1]) == str2int(y);
+    assert LHS == RHS;
     // assert str2int(x[0..i+1]) + str2int(y[0..j+1]) == str2int(x) + str2int(y);
 
     while i >= 0 || j >= 0 || carry != 0
@@ -324,9 +348,9 @@ method add(s1: string, s2: string) returns (res: string)
         // invariant forall m :: 0 <= m < |sb| ==> sb[m] == '0' || sb[m] == '1'
         // invariant power == Power2(|sb|)
         invariant ValidBitString(sb)  
-        invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0)
-         + (if j >= 0 then str2int(y[0..j+1]) else 0)
-         + carry * power == str2int(x) + str2int(y)
+        invariant LHS == RHS
+        invariant LHS == new_LHS
+        invariant old_LHS == new_LHS
         // invariant str2int(Reverse(sb)) + (str2int(x[0..i+1]) + str2int(y[0..j+1]) + carry * power) == str2int(x) + str2int(y)    {
         // invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
         // invariant str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0) + (if j >= 0 then str2int(y[0..j+1]) else 0) + carry * power == str2int(x) + str2int(y)
@@ -346,14 +370,85 @@ method add(s1: string, s2: string) returns (res: string)
         else{
             sb := sb + ['0'];}
 
-        if i >= 0 { i := i - 1; }
-        if j >= 0 { j := j - 1; }
+        if i >= 0 { i := i - 1; 
+        new_xi_val := str2int(x[0..i+1]);}
+        if j >= 0 { j := j - 1;
+        new_yj_val := str2int(y[0..j+1]); }
         power := power * 2;  // Update power
         Power2Shift(power);
-        assert power == Power2(|sb|);
+
+        new_LHS :=  str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0)
+         + (if j >= 0 then str2int(y[0..j+1]) else 0)
+         + carry * power;
+        // assert old_LHS == new_LHS;
+         if i >= 0 && x[i] == '0'{
+            if j >= 0 && y[j] == '0'{
+                if carry == 0{
+                    calc{
+                        new_LHS;
+                        == //{Carry = 0}
+                        str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0)
+                            + (if j >= 0 then str2int(y[0..j+1]) else 0)
+                            + 0;
+                        ==  //{ we know i and j >= 0}
+                             str2int(Reverse(sb)) + str2int(x[0..i+1]) 
+                            +  str2int(y[0..j+1]);
+                        == //{Plugging in updated values}
+                        str2int(Reverse(sb)) + new_xi_val + new_yj_val;
+                        == 
+
+                        old_LHS;
+                    }
+                    assert old_LHS == new_LHS;
+                }else{// carry == 1
+                    calc{
+                        new_LHS == old_LHS;
+                    }
+                }
+            }
+         }
+        //  if i == |x | - 2  && j == |y| - 2{
+        //     // First stage
+        //     if carry == 0{
+        //         calc{
+        //             new_LHS;
+        //             == { assert carry * power == 0 ;}
+        //             str2int(Reverse(sb)) + (if i >= 0 then str2int(x[0..i+1]) else 0)
+        //             + (if j >= 0 then str2int(y[0..j+1]) else 0)
+        //             + 0;
+        //             == //{ we know i and j >= 0}
+        //             str2int(Reverse(sb)) + str2int(x[0..i+1]) 
+        //             +  str2int(y[0..j+1]);
+
+        //             == 
+
+
+        //             LHS;
+        //         }
+        //     }
+        //     calc {
+            
+        //     }
+        //  }
+            assert old_LHS == new_LHS;
+            old_sb := sb;
+            old_xi_val := new_xi_val;
+            old_yj_val := new_yj_val;
+            old_LHS := new_LHS;
+        // assert new_LHS == LHS;
+        // assert power == Power2(|sb|);
+        // assert  (if i >= 0 then str2int(x[0..i+1]) else 0)
+        //  + (if j >= 0 then str2int(y[0..j+1]) else 0)
+        //   <= RHS;
+        
          
     }
-
+    assert (if i >= 0 then str2int(x[0..i+1]) else 0) == 0;
+    assert (if j >= 0 then str2int(y[0..j+1]) else 0) == 0;
+    assert carry * power == 0;
+    assert new_LHS == LHS;
+    assert LHS == str2int(Reverse(sb));
+    assert str2int(Reverse(sb)) == RHS;
     assert str2int(Reverse(sb)) == str2int(x) + str2int(y);
     
     // Reverse sb to get the proper bit string
@@ -377,7 +472,6 @@ method add(s1: string, s2: string) returns (res: string)
     assert str2int(res) == str2int(s1) + str2int(s2); // Help Dafny with the key fact
     }
 }
-
 
 // ----------------------------------------------------
 // 1) str2int: bit-string -> nat (reference function)
