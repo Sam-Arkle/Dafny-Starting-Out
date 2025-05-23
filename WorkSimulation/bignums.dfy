@@ -116,25 +116,107 @@ function  pow(base: nat, exp: nat): nat
     if exp == 0 then 1 else base * pow(base, exp - 1)
 }
 
+function leftShiftHelper(s: string, k: nat): string
+    requires ValidBitString(s)
+    ensures ValidBitString(leftShiftHelper(s, k))
+    decreases k
+{
+    if k == 0 then s else leftShiftHelper(s, k - 1) + "0"
+}
+
+// lemma LeftShiftCorrect(s: string, k: nat)
+//     requires ValidBitString(s)
+//     ensures str2int(leftShiftHelper(s, k)) == str2int(s) * Power2(k)
+// {
+//     if k == 0 {
+//         assert leftShiftHelper(s, 0) == s;
+//         assert str2int(s) == str2int(s) * Power2(0);
+//     } else {
+//         LeftShiftCorrect(s, k - 1);
+//         // leftShiftHelper(s, k) == leftShiftHelper(s, k-1) + "0"
+//         var prev := leftShiftHelper(s, k - 1);
+//         assert str2int(prev + "0") == 2 * str2int(prev) by {
+//             Str2IntAppend(prev, '0');
+//         }
+//         assert k >= 1;
+//         assert str2int(leftShiftHelper(s, k)) == 2 * str2int(prev);
+//         assert 2 * str2int(prev) == str2int(s) * (2 * Power2(k - 1)) by {
+//           calc {
+//             2 * str2int(prev);
+//             ==
+//             2 * str2int(leftShiftHelper(s, k - 1));
+//             ==
+//             str2int(s) * 2 * Power2(k - 1);
+//           }
+//         }
+//         assert 2 * Power2(k - 1) == Power2(k) by { Power2Shift(k - 1); }
+//         assert str2int(leftShiftHelper(s, k)) == str2int(s) * Power2(k);
+//     }
+// }
+
+lemma Str2IntAppend0(s: string, c:char)
+    requires ValidBitString(s)
+    requires c == '0' 
+    ensures str2int(s + [c]) == 2 * str2int(s) 
+    {
+        
+    }
+
 method leftShift(s: string, k: nat) returns (res: string)
     requires ValidBitString(s)
     ensures ValidBitString(res)
-    // ensures str2int(res) == str2int(s) * Power2(k) // Double check this logic
+    ensures str2int(res) == str2int(s) * Power2(k) 
 {
     if s == "0" {
         res := "0";
         assert ValidBitString(res);
+        assert str2int(res) == str2int(s) * Power2(k);
     } else {
         var zeros := "";
         var i := 0;
+        assert s == s + zeros;
+        assert str2int(s) * Power2(i) == str2int(s);
+        assert str2int(s + zeros) == str2int(s);
+        assert str2int(s + zeros) == str2int(s) * Power2(i);
         while i < k
             decreases k - i
             invariant |zeros| > 0 ==> ValidBitString(zeros)
+            invariant |zeros| == i
+            invariant str2int(s + zeros) == str2int(s) * Power2(i)
+            invariant i <=k
         {
+            assert k >=1;
             zeros := zeros + "0";
             i := i + 1;
+
+            assert str2int(s + zeros) == str2int(s) * Power2(i) by {
+                    // zeros = old_zeros + "0", i = old_i + 1
+                    calc {
+                        str2int(s + zeros);
+                        =={ assert s + zeros == s +  zeros[..|zeros|-1] + ['0'];}
+                        str2int(s + zeros[0.. |zeros| - 1] + ['0']);
+                        == 
+                        2 * str2int(s + zeros[..|zeros|-1]) ;
+                        == { /* By loop invariant for previous i */ }
+                        2 * (str2int(s) * Power2(i - 1));
+                        == { Power2Shift(i - 1); }
+                        str2int(s) * Power2(i);
+                    }
+                }
         }
+        assert i == k;
+
         res := s + zeros;
+        assert ValidBitString(res);
+        assert str2int(res) == str2int(s) * Power2(k) ;
+
+        // assert str2int(res) == str2int(s) * Power2(k) by {
+        // calc {
+        //     str2int(res);
+        //     =={Str2IntAppend(s, '0');}
+        //     str2int(s) * Power2(k);
+        // }
+    // }
     }
 }
 
@@ -151,7 +233,7 @@ method mul(s1: string, s2: string) returns (res: string)
     var y := normalizeBitString2(s2);
 
     // If either is "0", result is "0"
-    if x == "0" || y == "0" {
+    if str2int(x) == 0 || str2int(y) == 0 {
         res := "0";
         assert ValidBitString(res);
         assert str2int(res) == str2int(s1) * str2int(s2);
@@ -167,10 +249,18 @@ method mul(s1: string, s2: string) returns (res: string)
     var product := "0";
     var shiftCount := 0;
     var idx := |y| - 1;
+    assert |y| > 0;
+    ghost var RHS := str2int(x) * str2int(y);
+    ghost var LHS := str2int(product) + str2int(x) * str2int(y[0..idx + 1])  * Power2(shiftCount);
+    assert y == y[0..idx + 1];
+    assert LHS == RHS; 
     while idx >= 0
         decreases idx
-        // SA: Likely need to put some invariants here
         invariant ValidBitString(product)
+        invariant -1 <= idx < |y|
+        invariant shiftCount == (|y| -1) - (idx + 1) + 1 
+        invariant 0 <= shiftCount <= |y|
+        invariant LHS == RHS
     {
         if y[idx] == '1' {
             // partial = x shifted by shiftCount
@@ -179,8 +269,22 @@ method mul(s1: string, s2: string) returns (res: string)
         }
         shiftCount := shiftCount + 1;
         idx := idx - 1;
+
+        LHS := str2int(product) + str2int(x) * str2int(y[0..idx + 1])  * Power2(shiftCount);
+        assert LHS == RHS by {
+          calc {
+            LHS;
+            ==//{By defn}
+            str2int(product) + str2int(x) * str2int(y[0..idx + 1])  * Power2(shiftCount);
+            ==
+            RHS;
+          }
+        }
     }
+    assert LHS == RHS;
     res := product;
+    assert ValidBitString(res);
+    assert str2int(res) == str2int(s1) * str2int(s2);
 }
 
 // ----------------------------------------------------
@@ -211,30 +315,16 @@ method sub(s1: string, s2: string) returns (res: string)
     }
 
     var i := |x| - 1; // pointer on x
-    assert i < |x|;
+    // assert i < |x|;
     var j := |y| - 1; // pointer on y
-    assert j < |y|;
+    // assert j < |y|;
     var borrow := 0;
     var sb := [];  // reversed result
 
     ghost var RHS := str2int(x) - str2int(y);
     ghost var LHS := str2int(Reverse(sb)) + ((if i >= 0 then str2int(x[0..i+1]) else 0) - (if j >= 0 then str2int(y[0..j+1]) else 0 - borrow))  * Power2(|sb|);
-    assert LHS == 0 +  str2int(x[0..i+1]) - str2int(y[0..j+1]) * 1;
-    assert LHS == str2int(x[0..i+1]) - str2int(y[0..j+1]);
-    assert |x| > 0;
-    assert |y| > 0;
-    bitStringSumEqualsWholeSubstringSum(x);
-    SubstringValid(x);
-    assert str2int(x[0..i+1]) == str2int(x) by {
-      calc {
-        str2int(x[0 .. i + 1]);
-        =={assert x == x[0.. i + 1];}
-        str2int(x);
-      }
-    }
+    assert x == x[0.. i + 1];
     assert y == y[0..j+1];
-    assert str2int(y[0..j+1]) == str2int(y);
-    assert LHS == str2int(x) - str2int(y);
     assert LHS == RHS;
 
     while i >= 0 || j >= 0
@@ -373,6 +463,8 @@ lemma Str2IntPrepend(c: char, s: string)
         }
     }
 }
+
+
 lemma Str2IntAppend(s: string, c: char)
     requires ValidBitString(s)
     requires c == '0' || c == '1'
@@ -447,8 +539,6 @@ method add(s1: string, s2: string) returns (res: string)
     assert ValidBitString(sb);
     assert x[0..i+1] == x;
     assert y[0..j+1] == y;
-    assert str2int(x[0..i+1]) == str2int(x);
-    assert str2int(y[0..j+1]) == str2int(y);
     assert LHS == RHS;
     // assert str2int(x[0..i+1]) + str2int(y[0..j+1]) == str2int(x) + str2int(y);
 
@@ -552,6 +642,7 @@ method add(s1: string, s2: string) returns (res: string)
         // assert  (if i >= 0 then str2int(x[0..i+1]) else 0)
         //  + (if j >= 0 then str2int(y[0..j+1]) else 0)
         //   <= RHS;
+       
         
          
     }
