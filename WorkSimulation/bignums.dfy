@@ -11,7 +11,29 @@
 //  3. `mul(s1, s2)`: Returns the bit-string representing the product `s1 * s2`.
 //
 // All methods come with specifications ensuring they do what they claim, and we prove correctness using Dafny’s function specifications (`ensures`) by comparing the result against the reference functions `str2int` and `int2str`.
+// function lessThan (s1: string, s2: string) : bool
+//     requires ValidBitString(s1) && ValidBitString(s2) 
+// {
 
+// }
+
+// Helper lemma for lexicographic order
+
+lemma lastChar0 (s: string)
+    requires ValidBitString(s)
+    requires |s| > 0
+    requires s[|s|-1] == '0'
+    ensures str2int(s) == 2 * str2int(s[0..|s|-1]) + 0
+    {    
+    }
+
+lemma lastChar1 (s: string)
+    requires ValidBitString(s)
+    requires |s| > 0
+    requires s[|s|-1] == '1'
+    ensures str2int(s) == 2 * str2int(s[0..|s|-1]) + 1
+    {    
+    }
 
 method Main() {
     print "Examples:\n";
@@ -24,7 +46,54 @@ method Main() {
 
     var s := add(a, b);
     print "a + b = ", s, " (decimal=", str2int(s), ")\n";
-
+    ghost var ar := "1101";
+    calc {
+        str2int("1101");
+        ==//{}
+        str2int(ar) ;
+        == { Str2IntDef(ar);
+        assert ValidBitString(ar);
+        assert ValidBitString("110");
+        assert str2int(ar) == 2 * str2int(ar[0..|ar|-1]) + (if ar[3] == '1' then 1 else 0);}
+        2 * str2int(ar[0..|ar|-1]) + (if ar[3] == '1' then 1 else 0);
+        == {assert ar[3] == '1'; }
+        2 * str2int(ar[0..|ar|-1]) + 1;
+        == { Str2IntDef(ar[0..|ar|-1]);}
+        2 * (2 * str2int("11") + (if "110"[2] == '1' then 1 else 0)) + 1;
+        == { assert "110"[2] == '0'; }
+        2 * (2 * str2int("11") + 0) + 1;
+        == { Str2IntDef("11"); }
+        2 * (2 * (2 * str2int("1") + (if "11"[1] == '1' then 1 else 0))) + 1;
+        == { assert "11"[1] == '1'; }
+        2 * (2 * (2 * str2int("1") + 1)) + 1;
+        == { Str2IntDef("1"); assert str2int("1") == 1;}
+        2 * (2 * (2 * 1 + 1)) + 1;
+        == { assert str2int("") == 0; assert "1"[0] == '1'; }
+         13;
+    }
+    assert str2int("1101") == 13;
+    ghost var bs := "1011";
+    calc {
+    str2int(bs);
+    == { Str2IntDef(bs); assert ValidBitString(bs);}
+    2 * str2int(bs[0..|bs|-1]) + 1;
+    == { Str2IntDef(bs[0..|bs|-1]); }
+    2 * (2 * str2int("10") + 1) + 1;
+    == { Str2IntDef("10"); }
+    2 * (2 * (2 * str2int("1") + 0) + 1) + 1;
+    == { assert str2int("1") == 1; }
+    2 * (2 * (2 * 1 + 0) + 1) + 1;
+    == {}
+    2 * (2 * 2 + 1) + 1;
+    == {}
+    2 * 5 + 1;
+    == {}
+    10 + 1;
+    == {}
+    11;
+    }
+    assert str2int("1011") == 11;
+    assert str2int(b) >= str2int(a);
     var d := sub(b, a);
     print "b - a = ", d, " (decimal=", str2int(d), ")\n";
 
@@ -50,15 +119,17 @@ function  pow(base: nat, exp: nat): nat
 method leftShift(s: string, k: nat) returns (res: string)
     requires ValidBitString(s)
     ensures ValidBitString(res)
-    ensures str2int(res) == str2int(s) * pow(2, k) // Double check this logic
+    // ensures str2int(res) == str2int(s) * Power2(k) // Double check this logic
 {
     if s == "0" {
         res := "0";
+        assert ValidBitString(res);
     } else {
         var zeros := "";
         var i := 0;
         while i < k
             decreases k - i
+            invariant |zeros| > 0 ==> ValidBitString(zeros)
         {
             zeros := zeros + "0";
             i := i + 1;
@@ -76,12 +147,14 @@ method mul(s1: string, s2: string) returns (res: string)
     ensures ValidBitString(res)
     ensures str2int(res) == str2int(s1) * str2int(s2)
 {
-    var x := normalizeBitString(s1);
-    var y := normalizeBitString(s2);
+    var x := normalizeBitString2(s1);
+    var y := normalizeBitString2(s2);
 
     // If either is "0", result is "0"
     if x == "0" || y == "0" {
         res := "0";
+        assert ValidBitString(res);
+        assert str2int(res) == str2int(s1) * str2int(s2);
         return;
     }
 
@@ -97,6 +170,7 @@ method mul(s1: string, s2: string) returns (res: string)
     while idx >= 0
         decreases idx
         // SA: Likely need to put some invariants here
+        invariant ValidBitString(product)
     {
         if y[idx] == '1' {
             // partial = x shifted by shiftCount
@@ -118,28 +192,58 @@ method sub(s1: string, s2: string) returns (res: string)
     ensures ValidBitString(res) // Result is a valid string
     ensures str2int(res) == str2int(s1) - str2int(s2) // The maths works out
 {
-    var x := normalizeBitString(s1);
-    var y := normalizeBitString(s2);
+    var x := normalizeBitString2(s1);
+    var y := normalizeBitString2(s2);
 
     // If y == "0", the difference is x
-    if y == "0" {
+    if str2int(y) == 0 {
         res := x;
+        assert str2int(res) == str2int(s1) - str2int(s2);
+        assert ValidBitString(res);
         return;
     }
     // If x == y, the difference is "0"
     if x == y {
         res := "0";
+        assert ValidBitString(res);
+        assert str2int(res) == str2int(s1) - str2int(s2);
         return;
     }
 
     var i := |x| - 1; // pointer on x
+    assert i < |x|;
     var j := |y| - 1; // pointer on y
+    assert j < |y|;
     var borrow := 0;
     var sb := [];  // reversed result
 
+    ghost var RHS := str2int(x) - str2int(y);
+    ghost var LHS := str2int(Reverse(sb)) + ((if i >= 0 then str2int(x[0..i+1]) else 0) - (if j >= 0 then str2int(y[0..j+1]) else 0 - borrow))  * Power2(|sb|);
+    assert LHS == 0 +  str2int(x[0..i+1]) - str2int(y[0..j+1]) * 1;
+    assert LHS == str2int(x[0..i+1]) - str2int(y[0..j+1]);
+    assert |x| > 0;
+    assert |y| > 0;
+    bitStringSumEqualsWholeSubstringSum(x);
+    SubstringValid(x);
+    assert str2int(x[0..i+1]) == str2int(x) by {
+      calc {
+        str2int(x[0 .. i + 1]);
+        =={assert x == x[0.. i + 1];}
+        str2int(x);
+      }
+    }
+    assert y == y[0..j+1];
+    assert str2int(y[0..j+1]) == str2int(y);
+    assert LHS == str2int(x) - str2int(y);
+    assert LHS == RHS;
+
     while i >= 0 || j >= 0
-        decreases i + j, borrow
+        // decreases remaining, borrow
+        decreases (if i >= 0 then i + 1 else 0) + (if j >= 0 then j + 1 else 0) , borrow 
         invariant 0 <= borrow <= 1
+        invariant ValidBitString(sb)
+        invariant i <= |x| - 1 && j <= |y| - 1
+        invariant LHS == str2int(x) - str2int(y)
     {
         var bitX := 0;
         if i >= 0 { 
@@ -164,19 +268,28 @@ method sub(s1: string, s2: string) returns (res: string)
 
         if i >= 0 { i := i - 1; }
         if j >= 0 { j := j - 1; }
+        
+        LHS := str2int(Reverse(sb)) + ((if i >= 0 then str2int(x[0..i+1]) else 0) - (if j >= 0 then str2int(y[0..j+1]) else 0 - borrow))  * Power2(|sb|);
     }
+
+    assert (if i >= 0 then str2int(x[0..i+1]) else 0) == 0;
+    assert (if j >= 0 then str2int(y[0..j+1]) else 0) == 0;
+    assert borrow == 0;
+    assert str2int(Reverse(sb)) == str2int(x) - str2int(y);
 
     // Reverse result
     var rev := "";
     var k := |sb| - 1;
     while k >= 0
         decreases k
+        invariant ValidBitString(rev)
     {
         rev := rev + [sb[k]];
         k := k - 1;
     }
 
-    res := normalizeBitString(rev);
+    res := normalizeBitString2(rev);
+    assert str2int(res) == str2int(s1) - str2int(s2);
 }
 
 
@@ -190,10 +303,9 @@ function Reverse(s: string): string
 }
 
 // Helper lemma to prove substrings of valid bitstrings are valid:
-lemma SubstringValid(s: string, i: int)
+lemma SubstringValid(s: string)
     requires ValidBitString(s)
-    requires 0 <= i < |s|
-    ensures ValidBitString(s[i..])
+    ensures forall i : nat :: i < |s| ==> ValidBitString(s[i..])
 {}
 
 // Lemma to prove whole substring of string is equal to string.
@@ -288,7 +400,7 @@ lemma Str2IntAppend(s: string, c: char)
 method add(s1: string, s2: string) returns (res: string)
     requires ValidBitString(s1) && ValidBitString(s2)
     ensures ValidBitString(res)
-    // ensures str2int(res) == str2int(s1) + str2int(s2)
+    ensures str2int(res) == str2int(s1) + str2int(s2)
 {
     // We implement classic binary addition from right to left.
     // Step 1: Normalize inputs (drop leading zeros if needed).
@@ -299,12 +411,12 @@ method add(s1: string, s2: string) returns (res: string)
 
 
     // If either is "0", the sum is the other.
-    if x == "0" {
+    if str2int(x) == 0 {
         res := y;
         assert str2int(s1) + str2int(s2) == str2int(res);
         return;
     }
-    else if y == "0" {
+    else if str2int(y) == 0 {
         res := x; 
         assert str2int(s1) + str2int(s2) == str2int(res);
         return; 
@@ -456,7 +568,7 @@ method add(s1: string, s2: string) returns (res: string)
     var k := |sb| - 1;
     while k >= 0
         decreases k
-        invariant forall m :: 0 <= m < |rev| ==> rev[m] == '0' || rev[m] == '1'
+        invariant ValidBitString(rev)
         // invariant str2int(rev) == str2int(sb[0..k+1])
     {
         rev := rev + [sb[k]];
@@ -473,6 +585,29 @@ method add(s1: string, s2: string) returns (res: string)
     }
 }
 
+ghost function IntValue(s: string, last_idx: int): int
+    requires ValidBitString(s)
+    requires -1 <= last_idx < |s| // last_idx is the index of the LSB of the prefix considered
+{
+    if last_idx < 0 then 0
+    else str2int(s[0..last_idx+1]) // Value of s[0...last_idx]
+}
+
+// Lemma for IntValue
+// lemma Lemma_IntValue_Step(s: string, k: int)
+//     requires ValidBitString(s) && 0 <= k < |s|
+//     requires s[k] == '0' || s[k] == '1' // and other ValidBitString properties for substrings
+//     ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
+//     {
+
+//     }
+
+// ghost function ReversedSeqCharToInt(s: seq<char>): int
+//     requires forall c :: c in s ==> c == '0' || c == '1'
+// {
+//     str2int(Reverse(string(s))) // Assuming string(s) is valid if s only contains '0'/'1'
+// }
+
 // ----------------------------------------------------
 // 1) str2int: bit-string -> nat (reference function)
 // ----------------------------------------------------
@@ -480,10 +615,12 @@ function str2int(s: string) : nat
     requires ValidBitString(s)
     ensures str2int(s) == str2int(s)
     ensures ValidBitString(int2str(str2int(s)))
+    // ensures |s| > 0 ==>  int2str(str2int(s)) == s // TODO: Add this in
     decreases s
 {
     if |s| == 0 then 0 else 2 * str2int(s[0..|s|  - 1]) + (if s[ |s| - 1] == '1' then 1 else 0)
 }
+
 
 lemma ValidBitString_Concat_Char(s: string, c: string)
     requires ValidBitString(s)
@@ -609,39 +746,85 @@ lemma Int2Str2IntIdentity(n: nat)
 }
 
 predicate ValidBitString(s: string)
-    // reads s
+    // reads s // could change this to a char array and then it'll get better access...
 {
     // All characters must be '0' or '1'.
     // forall i | 0 <= i < |s| :: s[i] == '0' || s[i] == '1' // original
     forall i : nat | i < |s| :: s[i] == '0' || s[i] == '1'
 }
 
+
+method StringToCharArray(s: string) returns (a: array<char>)
+    ensures a.Length == |s|
+    ensures forall i :: 0 <= i < |s| ==> a[i] == s[i]
+{
+    a := new char[|s|];
+    var i := 0;
+    while i < |s|
+        invariant 0 <= i <= |s|
+        invariant forall j :: 0 <= j < i ==> a[j] == s[j]
+        decreases |s| - i
+    {
+        a[i] := s[i];
+        i := i + 1;
+    }
+}
+method CharArrayToString(a: array<char>) returns (s: string)
+    ensures |s| == a.Length
+    ensures forall i :: 0 <= i < a.Length ==> s[i] == a[i]
+{
+    s := "";
+    var i := 0;
+    while i < a.Length
+        invariant 0 <= i <= a.Length
+        invariant |s| == i
+        invariant forall j :: 0 <= j < i ==> s[j] == a[j]
+        decreases a.Length - i
+    {
+        s := s + [a[i]];
+        i := i + 1;
+    }
+}
+
+
+// lemma validCharArrayiffValidBitString()
+
 // ----------------------------------------------------
 // Helpers for string-based arithmetic
 // ----------------------------------------------------
 
-method normalizeBitString(s: string) returns(res: string)
-    // Remove leading zeros, except keep at least one digit
-    requires ValidBitString(s)
-    ensures ValidBitString(res)
-    ensures str2int(res) == str2int(s)
-    decreases s
-{
-    // If all zero or empty, return "0"
-    if |s| == 0 {
-        res := "0";}
-    else{
-        // find first '1'
-        var firstOne :| 0 <= firstOne <= |s|;
-        // pick the earliest i in 0..|s| if s[i] == '1'
-        if (forall i | 0 <= i < |s| :: s[i] == '0') {
-            res := "0";}
-        else {
-            // firstOne is the leftmost '1'
-            res := s[firstOne..|s|] ;}
-    }
-}
+// method normalizeBitString(s: string) returns(res: string)
+//     // Remove leading zeros, except keep at least one digit
+//     requires ValidBitString(s)
+//     ensures ValidBitString(res)
+//     ensures str2int(res) == str2int(s)
+//     decreases s
+// {
+//     // If all zero or empty, return "0"
+//     if |s| == 0 {
+//         res := "0";}
+//     else{
+//         // find first '1'
+//         var firstOne :| 0 <= firstOne <= |s|;
+//         // pick the earliest i in 0..|s| if s[i] == '1'
+//         if (forall i | 0 <= i < |s| :: s[i] == '0') {
+//             res := "0";}
+//         else {
+//             // firstOne is the leftmost '1'
+//             res := s[firstOne..|s|] ;}
+//     }
+// }
 
+method getFinalBit(s: string) returns (bit: char) 
+    requires ValidBitString(s)
+    requires |s| > 0
+    ensures bit == s[|s|-1]
+    {
+        bit := s[|s|-1];
+    }
+
+// lemma buildingBitString (s : string)
+//     requires ValidBitString(s)
 
 
 lemma Str2IntDef(s: string)
