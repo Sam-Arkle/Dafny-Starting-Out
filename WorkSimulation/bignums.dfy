@@ -200,25 +200,7 @@ lemma Lemma_IntValue_Step(s: string, k: int)
         assert s[0..k+1][k] == s[k];     // Check slice definitions
     }
 
-ghost function IntValue(s: string, last_idx: int): int
-    requires ValidBitString(s)
-    requires -1 <= last_idx < |s| // last_idx is the index of the LSB of the prefix considered
-{
-    if last_idx < 0 then 0
-    else str2int(s[0..last_idx+1]) // Value of s[0...last_idx]
-}
 
-
-
-// Lemma for IntValue
-lemma Lemma_IntValue_Step(s: string, k: int)
-    requires ValidBitString(s) && 0 <= k < |s|
-    requires s[k] == '0' || s[k] == '1' // and other ValidBitString properties for substrings
-    ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
-    {
-        assert s[0..k+1][0..k] == s[0..k]; // Check slice definitions
-        assert s[0..k+1][k] == s[k];     // Check slice definitions
-    }
 
 lemma DigitMultiplyLemma(X_val: int, digit: int, shift: nat)
   requires digit == 0 || digit == 1
