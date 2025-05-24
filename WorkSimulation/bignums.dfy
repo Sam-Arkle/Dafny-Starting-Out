@@ -249,11 +249,12 @@ lemma MultiplicationInvariantHelper(X_val: int, Y_val: int, processed_val: int, 
 //    No direct use of str2int/int2str
 // ----------------------------------------------------
 method mul(s1: string, s2: string) returns (res: string)
+ 
     requires ValidBitString(s1) && ValidBitString(s2)
     ensures ValidBitString(res)
     ensures str2int(res) == str2int(s1) * str2int(s2)
 {
-    var x := normalizeBitString2(s1);
+    var x := normalizeBitString2(s1); 
     var y := normalizeBitString2(s2);
 
     // If either is "0", result is "0"
@@ -279,9 +280,13 @@ method mul(s1: string, s2: string) returns (res: string)
     ghost var Y_val := str2int(y);
     ghost var RHS := X_val * Y_val;
 
-    ghost var LHS := str2int(product) + X_val * IntValue(y, idx)  * Power2(shiftCount);
+    ghost var remaining_y_val := IntValue(y, idx);
+
+    ghost var LHS := str2int(product) + X_val * remaining_y_val  * Power2(shiftCount);
+    ghost var processed_val := str2int(product);
+    
+   
     ghost var LHS_old : int;
-    // ghost var old_LHS_val: int;
     assert y == y[0..idx + 1];
     assert LHS == RHS; 
     while idx >= 0
@@ -290,103 +295,70 @@ method mul(s1: string, s2: string) returns (res: string)
         invariant -1 <= idx < |y|
         invariant shiftCount == (|y| -1) - idx  
         invariant 0 <= shiftCount <= |y|
-        invariant LHS == RHS
-    {
-         // Ghost variables to capture state at the START of the current iteration
-        ghost var product_val_old := str2int(product);
-        ghost var shiftCount_old := shiftCount;
-        ghost var idx_old := idx;
-        ghost var current_y_bit_char := y[idx_old]; // Assuming idx_old >= 0 (loop condition)
-        ghost var current_y_bit_val := if current_y_bit_char == '1' then 1 else 0;
+        invariant remaining_y_val == IntValue(y, idx)
+        // invariant LHS == RHS
+        // invariant LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount)
         
-        // Define LHS_old directly from the current state
-        ghost var LHS_old := str2int(product) + X_val * IntValue(y, idx) * Power2(shiftCount);
-        assert LHS_old == LHS; // Should be equal by definition of LHS
-        assert LHS_old == RHS; // This should hold from loop invariant
-        
-        // Since we captured the values before any changes, these should be equal
-        assert LHS_old == product_val_old + X_val * IntValue(y, idx_old) * Power2(shiftCount_old);
+    {   
 
-
+        // assert LHS == RHS;
         if y[idx] == '1' {
             // partial = x shifted by shiftCount
             var partial := leftShift(x, shiftCount); // This function needs to add trailing 0's to the multiplicand based on shiftcount.
             product := add(product, partial); // Product is a running sum of requierd partial binary numbers.
-            
+            // processed_val := str2int(product);
         }
         shiftCount := shiftCount + 1;
         idx := idx - 1;
 
-        LHS := str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
-        assert LHS == LHS_old by { // RHS is str2int(x) * str2int(y) which equals the old LHS
-        calc {
-            str2int(product) + str2int(x) * IntValue(y, idx) * Power2(shiftCount);
-                // This is: str2int(product_new) + X_val * IntValue(y, idx_new) * Power2(shiftCount_new)
-
-        ==  {   // Step 1: Expand str2int(product_new)
-                // product_new is product_old if y[idx_old]=='0'
-                // product_new is add(product_old, leftShift(x, shiftCount_old)) if y[idx_old]=='1'
-                // So, str2int(product_new) == product_val_old + str2int(x) * current_y_bit_val * Power2(shiftCount_old)
-                // For this, you need:
-                //   - The ensures clause of 'add': str2int(add(A,B)) == str2int(A) + str2int(B)
-                //   - The ensures clause of 'leftShift': str2int(leftShift(S,C)) == str2int(S) * Power2(C)
-                // You might need to assert these explicitly or call lemmas.
-                // For example: Lemma_Str2Int_Add(product_at_start_of_iter_string, partial_string_if_any);
-                //              Lemma_Str2Int_LeftShift(x, shiftCount_old);
-                assert str2int(product) == product_val_old + str2int(x) * current_y_bit_val * Power2(shiftCount_old); // This needs justification based on the if/else
-            }
-            (product_val_old + str2int(x) * current_y_bit_val * Power2(shiftCount_old)) +
-                str2int(x) * IntValue(y, idx_old - 1) * Power2(shiftCount_old + 1);
-
-        ==  {   // Step 2: Manipulate Power2 and factor out terms
-                // Use Power2Shift(shiftCount_old); to state Power2(shiftCount_old + 1) == 2 * Power2(shiftCount_old);
-                Power2Shift(shiftCount_old);
-            }
-            product_val_old +
-                str2int(x) * current_y_bit_val * Power2(shiftCount_old) +
-                str2int(x) * IntValue(y, idx_old - 1) * 2 * Power2(shiftCount_old);
-
-        ==  {   // Step 3: Factor out str2int(x) * Power2(shiftCount_old)
-            }
-            product_val_old +
-                str2int(x) * Power2(shiftCount_old) * (current_y_bit_val + IntValue(y, idx_old - 1) * 2);
-
-        ==  {   // Step 4: Apply Lemma_IntValue_Step
-                // (current_y_bit_val + IntValue(y, idx_old - 1) * 2) is IntValue(y, idx_old)
-                // Need to call: Lemma_IntValue_Step(y, idx_old); (assuming idx_old >=0 from loop condition)
-                assert current_y_bit_val == (if y[idx_old] == '1' then 1 else 0); // from definition
-                Lemma_IntValue_Step(y, idx_old);
-            }
-            product_val_old + str2int(x) * Power2(shiftCount_old) * IntValue(y, idx_old);
-
-        ==  {   // Step 5: Rearrange to match the invariant form at the start of the iteration
-            }
-            product_val_old + str2int(x) * IntValue(y, idx_old) * Power2(shiftCount_old);
-                // This is exactly the RHS of the invariant *before* the current iteration's updates,
-                // which was equal to str2int(x) * str2int(y) (the overall RHS).
+        remaining_y_val := IntValue(y, idx);
+        // assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+        // assert LHS == RHS
+        // by {
+        //     calc {
+        //     LHS;
+        //     == { 
+        //         // By our loop invariant, LHS was defined to equal:
+        //         // str2int(product) + str2int(x) * IntValue(y, idx) * Power2(shiftCount)
+        //     }
+        //     str2int(product) + str2int(x) * IntValue(y, idx) * Power2(shiftCount);
+        //     == { 
+        //         // Using our supporting lemma Power2Shift and the effect of appending '0'
+        //         // via Str2IntAppend, we can show that this equals RHS.
+        //     }
+        //     RHS;
+        //     }
+        // }
+        // assert LHS == RHS;
         
-        =={assert product_val_old + str2int(x) * IntValue(y, idx_old) * Power2(shiftCount_old) == RHS;}  // By the loop invariant holding at the start of this iteration
-
-            RHS;
-        }
-
     }
-    assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
-    }
-    assert LHS == RHS;
-    assert str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount) == X_val * Y_val;
     assert idx == -1;
+    IntValue_Negative(y);
+    assert remaining_y_val == 0;
+
+    // Show that the invariant simplifies to just str2int(product)
+    assert X_val * str2int(product) + X_val * 0 * Power2(shiftCount) == X_val * Y_val;
+    assert X_val * str2int(product) == X_val * Y_val;
+
+// Since X_val != 0 (we handled X_val == 0 earlier), we can divide
+assert str2int(product) == Y_val;
+    // assert str2int(x) * IntValue(y, idx)  * Power2(shiftCount) == 0;
+    // assert LHS == str2int(product);
+    // assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+    // assert LHS == RHS;
+    assert X_val * str2int(product) + X_val * remaining_y_val * Power2(shiftCount) == X_val * Y_val;
+
     res := product;
-    assert str2int(res) == LHS by {
-      calc {
-        LHS;
-        ==//{By defn}
-         str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
-         ==//{as idx is -1}
-         str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
-        str2int(res);
-      }
-    }
+    // assert str2int(res) == LHS by {
+    //   calc {
+    //     LHS;
+    //     ==//{By defn}
+    //      str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+    //      ==//{as idx is -1}
+    //      str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+    //     str2int(res);
+    //   }
+    // }
     assert ValidBitString(res);
     assert str2int(res) == str2int(s1) * str2int(s2);
 }
