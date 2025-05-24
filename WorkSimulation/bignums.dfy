@@ -241,32 +241,7 @@ lemma MultiplicationInvariantHelper(X_val: int, Y_val: int, processed_val: int, 
     }
 }
 
-// Key helper lemmas for multiplication proof
-lemma IntValueDecomposition(s: string, k: int)
-    requires ValidBitString(s) && 0 <= k < |s|
-    ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
-{
-    // This follows from the binary representation property
-    if k == 0 {
-        assert IntValue(s, -1) == 0;
-        assert IntValue(s, 0) == str2int(s[0..1]);
-        // str2int(s[0..1]) == (if s[0] == '1' then 1 else 0)
-    } else {
-        // Use the recursive structure of str2int
-        assert s[0..k+1] == s[0..k] + [s[k]];
-        Str2IntAppend(s[0..k], s[k]);
-        assert str2int(s[0..k+1]) == 2 * str2int(s[0..k]) + (if s[k] == '1' then 1 else 0);
-    }
-}
 
-
-
-lemma IntValueNegativeBase(s: string)
-    requires ValidBitString(s)
-    ensures IntValue(s, -1) == 0
-{
-    // By definition
-}
 
 
 // ----------------------------------------------------
@@ -317,27 +292,20 @@ method mul(s1: string, s2: string) returns (res: string)
         invariant 0 <= shiftCount <= |y|
         invariant LHS == RHS
     {
-        // Ghost variables to capture state at the START of the current iteration
-        // assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+         // Ghost variables to capture state at the START of the current iteration
         ghost var product_val_old := str2int(product);
         ghost var shiftCount_old := shiftCount;
         ghost var idx_old := idx;
         ghost var current_y_bit_char := y[idx_old]; // Assuming idx_old >= 0 (loop condition)
         ghost var current_y_bit_val := if current_y_bit_char == '1' then 1 else 0;
-        LHS_old := LHS;
-        assert LHS_old == RHS;
-        assert str2int(product) == product_val_old;
-        assert IntValue(y, idx) == IntValue(y, idx_old);
-        assert Power2(shiftCount) == Power2(shiftCount_old);
-        assert LHS_old == product_val_old + X_val * IntValue(y, idx_old) * Power2(shiftCount_old) by {
-          calc {
-            LHS_old;
-            =={assert LHS_old == str2int(product) + X_val * IntValue(y, idx) * Power2(shiftCount);}
-            product_val_old + X_val * IntValue(y, idx_old) * Power2(shiftCount_old);
-          }
-        }
-        // assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
-        // assert LHS_old == product_val_old + str2int(x) * IntValue(y, idx_old) * Power2(shiftCount_old);
+        
+        // Define LHS_old directly from the current state
+        ghost var LHS_old := str2int(product) + X_val * IntValue(y, idx) * Power2(shiftCount);
+        assert LHS_old == LHS; // Should be equal by definition of LHS
+        assert LHS_old == RHS; // This should hold from loop invariant
+        
+        // Since we captured the values before any changes, these should be equal
+        assert LHS_old == product_val_old + X_val * IntValue(y, idx_old) * Power2(shiftCount_old);
 
 
         if y[idx] == '1' {
