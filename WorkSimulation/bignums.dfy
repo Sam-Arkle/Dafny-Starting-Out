@@ -124,35 +124,6 @@ function leftShiftHelper(s: string, k: nat): string
     if k == 0 then s else leftShiftHelper(s, k - 1) + "0"
 }
 
-// lemma LeftShiftCorrect(s: string, k: nat)
-//     requires ValidBitString(s)
-//     ensures str2int(leftShiftHelper(s, k)) == str2int(s) * Power2(k)
-// {
-//     if k == 0 {
-//         assert leftShiftHelper(s, 0) == s;
-//         assert str2int(s) == str2int(s) * Power2(0);
-//     } else {
-//         LeftShiftCorrect(s, k - 1);
-//         // leftShiftHelper(s, k) == leftShiftHelper(s, k-1) + "0"
-//         var prev := leftShiftHelper(s, k - 1);
-//         assert str2int(prev + "0") == 2 * str2int(prev) by {
-//             Str2IntAppend(prev, '0');
-//         }
-//         assert k >= 1;
-//         assert str2int(leftShiftHelper(s, k)) == 2 * str2int(prev);
-//         assert 2 * str2int(prev) == str2int(s) * (2 * Power2(k - 1)) by {
-//           calc {
-//             2 * str2int(prev);
-//             ==
-//             2 * str2int(leftShiftHelper(s, k - 1));
-//             ==
-//             str2int(s) * 2 * Power2(k - 1);
-//           }
-//         }
-//         assert 2 * Power2(k - 1) == Power2(k) by { Power2Shift(k - 1); }
-//         assert str2int(leftShiftHelper(s, k)) == str2int(s) * Power2(k);
-//     }
-// }
 
 lemma Str2IntAppend0(s: string, c:char)
     requires ValidBitString(s)
@@ -205,20 +176,116 @@ method leftShift(s: string, k: nat) returns (res: string)
                 }
         }
         assert i == k;
-
         res := s + zeros;
         assert ValidBitString(res);
         assert str2int(res) == str2int(s) * Power2(k) ;
-
-        // assert str2int(res) == str2int(s) * Power2(k) by {
-        // calc {
-        //     str2int(res);
-        //     =={Str2IntAppend(s, '0');}
-        //     str2int(s) * Power2(k);
-        // }
-    // }
     }
 }
+
+ghost function IntValue(s: string, last_idx: int): int
+    requires ValidBitString(s)
+    requires -1 <= last_idx < |s| // last_idx is the index of the LSB of the prefix considered
+{
+    if last_idx < 0 then 0
+    else str2int(s[0..last_idx+1]) // Value of s[0...last_idx]
+}
+
+// Lemma for IntValue
+lemma Lemma_IntValue_Step(s: string, k: int)
+    requires ValidBitString(s) && 0 <= k < |s|
+    requires s[k] == '0' || s[k] == '1' // and other ValidBitString properties for substrings
+    ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
+    {
+        assert s[0..k+1][0..k] == s[0..k]; // Check slice definitions
+        assert s[0..k+1][k] == s[k];     // Check slice definitions
+    }
+
+ghost function IntValue(s: string, last_idx: int): int
+    requires ValidBitString(s)
+    requires -1 <= last_idx < |s| // last_idx is the index of the LSB of the prefix considered
+{
+    if last_idx < 0 then 0
+    else str2int(s[0..last_idx+1]) // Value of s[0...last_idx]
+}
+
+
+
+// Lemma for IntValue
+lemma Lemma_IntValue_Step(s: string, k: int)
+    requires ValidBitString(s) && 0 <= k < |s|
+    requires s[k] == '0' || s[k] == '1' // and other ValidBitString properties for substrings
+    ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
+    {
+        assert s[0..k+1][0..k] == s[0..k]; // Check slice definitions
+        assert s[0..k+1][k] == s[k];     // Check slice definitions
+    }
+
+lemma DigitMultiplyLemma(X_val: int, digit: int, shift: nat)
+  requires digit == 0 || digit == 1
+  ensures X_val * digit * Power2(shift) == (if digit == 1 then X_val * Power2(shift) else 0)
+{
+  if digit == 0 {
+    assert X_val * 0 * Power2(shift) == 0;
+  } else {
+    assert X_val * 1 * Power2(shift) == X_val * Power2(shift);
+  }
+}
+
+lemma IntValue_Base(s: string)
+    requires ValidBitString(s) && |s| > 0
+    ensures IntValue(s, |s| - 1) == str2int(s)
+{
+    // IntValue(s, |s|-1) = str2int(s[0..|s|-1+1]) = str2int(s[0..|s|]) = str2int(s)
+    assert s[0..|s|] == s;
+}
+
+lemma IntValue_Negative(s: string)
+    requires ValidBitString(s)
+    ensures IntValue(s, -1) == 0
+{
+    // By definition, IntValue(s, -1) = 0 when last_idx < 0
+}
+
+lemma MultiplicationInvariantHelper(X_val: int, Y_val: int, processed_val: int, remaining_val: int, shift: nat)
+    requires processed_val + remaining_val * Power2(shift) == Y_val
+    ensures X_val * processed_val + X_val * remaining_val * Power2(shift) == X_val * Y_val
+{
+    calc {
+        X_val * processed_val + X_val * remaining_val * Power2(shift);
+        == // Factor out X_val
+        X_val * (processed_val + remaining_val * Power2(shift));
+        == // Use the precondition
+        X_val * Y_val;
+    }
+}
+
+// Key helper lemmas for multiplication proof
+lemma IntValueDecomposition(s: string, k: int)
+    requires ValidBitString(s) && 0 <= k < |s|
+    ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
+{
+    // This follows from the binary representation property
+    if k == 0 {
+        assert IntValue(s, -1) == 0;
+        assert IntValue(s, 0) == str2int(s[0..1]);
+        // str2int(s[0..1]) == (if s[0] == '1' then 1 else 0)
+    } else {
+        // Use the recursive structure of str2int
+        assert s[0..k+1] == s[0..k] + [s[k]];
+        Str2IntAppend(s[0..k], s[k]);
+        assert str2int(s[0..k+1]) == 2 * str2int(s[0..k]) + (if s[k] == '1' then 1 else 0);
+    }
+}
+
+
+
+lemma IntValueNegativeBase(s: string)
+    requires ValidBitString(s)
+    ensures IntValue(s, -1) == 0
+{
+    // By definition
+}
+
 
 // ----------------------------------------------------
 // 5) mul: string-based multiplication
@@ -239,7 +306,6 @@ method mul(s1: string, s2: string) returns (res: string)
         assert str2int(res) == str2int(s1) * str2int(s2);
         return;
     }
-
     // We'll implement the classic method:
     //   product = 0
     //   for each bit of y (from right to left):
@@ -249,40 +315,128 @@ method mul(s1: string, s2: string) returns (res: string)
     var product := "0";
     var shiftCount := 0;
     var idx := |y| - 1;
+
     assert |y| > 0;
-    ghost var RHS := str2int(x) * str2int(y);
-    ghost var LHS := str2int(product) + str2int(x) * str2int(y[0..idx + 1])  * Power2(shiftCount);
+
+    ghost var X_val := str2int(x); 
+    ghost var Y_val := str2int(y);
+    ghost var RHS := X_val * Y_val;
+
+    ghost var LHS := str2int(product) + X_val * IntValue(y, idx)  * Power2(shiftCount);
+    ghost var LHS_old : int;
+    // ghost var old_LHS_val: int;
     assert y == y[0..idx + 1];
     assert LHS == RHS; 
     while idx >= 0
         decreases idx
         invariant ValidBitString(product)
         invariant -1 <= idx < |y|
-        invariant shiftCount == (|y| -1) - (idx + 1) + 1 
+        invariant shiftCount == (|y| -1) - idx  
         invariant 0 <= shiftCount <= |y|
         invariant LHS == RHS
     {
+        // Ghost variables to capture state at the START of the current iteration
+        // assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+        ghost var product_val_old := str2int(product);
+        ghost var shiftCount_old := shiftCount;
+        ghost var idx_old := idx;
+        ghost var current_y_bit_char := y[idx_old]; // Assuming idx_old >= 0 (loop condition)
+        ghost var current_y_bit_val := if current_y_bit_char == '1' then 1 else 0;
+        LHS_old := LHS;
+        assert LHS_old == RHS;
+        assert str2int(product) == product_val_old;
+        assert IntValue(y, idx) == IntValue(y, idx_old);
+        assert Power2(shiftCount) == Power2(shiftCount_old);
+        assert LHS_old == product_val_old + X_val * IntValue(y, idx_old) * Power2(shiftCount_old) by {
+          calc {
+            LHS_old;
+            =={assert LHS_old == str2int(product) + X_val * IntValue(y, idx) * Power2(shiftCount);}
+            product_val_old + X_val * IntValue(y, idx_old) * Power2(shiftCount_old);
+          }
+        }
+        // assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+        // assert LHS_old == product_val_old + str2int(x) * IntValue(y, idx_old) * Power2(shiftCount_old);
+
+
         if y[idx] == '1' {
             // partial = x shifted by shiftCount
             var partial := leftShift(x, shiftCount); // This function needs to add trailing 0's to the multiplicand based on shiftcount.
             product := add(product, partial); // Product is a running sum of requierd partial binary numbers.
+            
         }
         shiftCount := shiftCount + 1;
         idx := idx - 1;
 
-        LHS := str2int(product) + str2int(x) * str2int(y[0..idx + 1])  * Power2(shiftCount);
-        assert LHS == RHS by {
-          calc {
-            LHS;
-            ==//{By defn}
-            str2int(product) + str2int(x) * str2int(y[0..idx + 1])  * Power2(shiftCount);
-            ==
+        LHS := str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+        assert LHS == LHS_old by { // RHS is str2int(x) * str2int(y) which equals the old LHS
+        calc {
+            str2int(product) + str2int(x) * IntValue(y, idx) * Power2(shiftCount);
+                // This is: str2int(product_new) + X_val * IntValue(y, idx_new) * Power2(shiftCount_new)
+
+        ==  {   // Step 1: Expand str2int(product_new)
+                // product_new is product_old if y[idx_old]=='0'
+                // product_new is add(product_old, leftShift(x, shiftCount_old)) if y[idx_old]=='1'
+                // So, str2int(product_new) == product_val_old + str2int(x) * current_y_bit_val * Power2(shiftCount_old)
+                // For this, you need:
+                //   - The ensures clause of 'add': str2int(add(A,B)) == str2int(A) + str2int(B)
+                //   - The ensures clause of 'leftShift': str2int(leftShift(S,C)) == str2int(S) * Power2(C)
+                // You might need to assert these explicitly or call lemmas.
+                // For example: Lemma_Str2Int_Add(product_at_start_of_iter_string, partial_string_if_any);
+                //              Lemma_Str2Int_LeftShift(x, shiftCount_old);
+                assert str2int(product) == product_val_old + str2int(x) * current_y_bit_val * Power2(shiftCount_old); // This needs justification based on the if/else
+            }
+            (product_val_old + str2int(x) * current_y_bit_val * Power2(shiftCount_old)) +
+                str2int(x) * IntValue(y, idx_old - 1) * Power2(shiftCount_old + 1);
+
+        ==  {   // Step 2: Manipulate Power2 and factor out terms
+                // Use Power2Shift(shiftCount_old); to state Power2(shiftCount_old + 1) == 2 * Power2(shiftCount_old);
+                Power2Shift(shiftCount_old);
+            }
+            product_val_old +
+                str2int(x) * current_y_bit_val * Power2(shiftCount_old) +
+                str2int(x) * IntValue(y, idx_old - 1) * 2 * Power2(shiftCount_old);
+
+        ==  {   // Step 3: Factor out str2int(x) * Power2(shiftCount_old)
+            }
+            product_val_old +
+                str2int(x) * Power2(shiftCount_old) * (current_y_bit_val + IntValue(y, idx_old - 1) * 2);
+
+        ==  {   // Step 4: Apply Lemma_IntValue_Step
+                // (current_y_bit_val + IntValue(y, idx_old - 1) * 2) is IntValue(y, idx_old)
+                // Need to call: Lemma_IntValue_Step(y, idx_old); (assuming idx_old >=0 from loop condition)
+                assert current_y_bit_val == (if y[idx_old] == '1' then 1 else 0); // from definition
+                Lemma_IntValue_Step(y, idx_old);
+            }
+            product_val_old + str2int(x) * Power2(shiftCount_old) * IntValue(y, idx_old);
+
+        ==  {   // Step 5: Rearrange to match the invariant form at the start of the iteration
+            }
+            product_val_old + str2int(x) * IntValue(y, idx_old) * Power2(shiftCount_old);
+                // This is exactly the RHS of the invariant *before* the current iteration's updates,
+                // which was equal to str2int(x) * str2int(y) (the overall RHS).
+        
+        =={assert product_val_old + str2int(x) * IntValue(y, idx_old) * Power2(shiftCount_old) == RHS;}  // By the loop invariant holding at the start of this iteration
+
             RHS;
-          }
         }
+
+    }
+    assert LHS == str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
     }
     assert LHS == RHS;
+    assert str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount) == X_val * Y_val;
+    assert idx == -1;
     res := product;
+    assert str2int(res) == LHS by {
+      calc {
+        LHS;
+        ==//{By defn}
+         str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+         ==//{as idx is -1}
+         str2int(product) + str2int(x) * IntValue(y, idx)  * Power2(shiftCount);
+        str2int(res);
+      }
+    }
     assert ValidBitString(res);
     assert str2int(res) == str2int(s1) * str2int(s2);
 }
@@ -676,22 +830,7 @@ method add(s1: string, s2: string) returns (res: string)
     }
 }
 
-ghost function IntValue(s: string, last_idx: int): int
-    requires ValidBitString(s)
-    requires -1 <= last_idx < |s| // last_idx is the index of the LSB of the prefix considered
-{
-    if last_idx < 0 then 0
-    else str2int(s[0..last_idx+1]) // Value of s[0...last_idx]
-}
 
-// Lemma for IntValue
-// lemma Lemma_IntValue_Step(s: string, k: int)
-//     requires ValidBitString(s) && 0 <= k < |s|
-//     requires s[k] == '0' || s[k] == '1' // and other ValidBitString properties for substrings
-//     ensures IntValue(s, k) == IntValue(s, k-1) * 2 + (if s[k] == '1' then 1 else 0)
-//     {
-
-//     }
 
 // ghost function ReversedSeqCharToInt(s: seq<char>): int
 //     requires forall c :: c in s ==> c == '0' || c == '1'
